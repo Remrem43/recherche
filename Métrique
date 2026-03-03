@@ -14,8 +14,8 @@ def select_file(title, filetypes):
 # Sélection des fichiers
 # -------------------------
 
-csv_path = select_file("Select CSV file with NP coordinates",
-                       [("CSV files", "*.csv")])
+excel_path = select_file("Select Excel file with NP coordinates",
+                         [("Excel files", "*.xlsx *.xls")])
 
 mask_path = select_file("Select TIF mask file",
                         [("TIF files", "*.tif *.tiff")])
@@ -24,46 +24,44 @@ mask_path = select_file("Select TIF mask file",
 # Chargement des données
 # -------------------------
 
-# Chargement du CSV
-df = pd.read_csv(csv_path)
+df = pd.read_excel(excel_path)
 
-# Vérification colonnes
-if not {'x', 'y'}.issubset(df.columns):
-    raise ValueError("CSV must contain 'x' and 'y' columns")
+x_col = "Index Of Minimum Value X"
+y_col = "Index Of Minimum Value Y"
 
-# Chargement du masque
+if not {x_col, y_col}.issubset(df.columns):
+    raise ValueError("Expected coordinate columns not found.")
+
 mask = tiff.imread(mask_path)
 
 if mask.ndim != 2:
-    raise ValueError("Mask must be a 2D image")
+    raise ValueError("Mask must be 2D.")
 
 height, width = mask.shape
 
 # -------------------------
-# Comptage des NPs
+# Version vectorisée (rapide)
 # -------------------------
 
-substrate_count = 0
-tissue_count = 0
+coords = df[[x_col, y_col]].round().astype(int)
 
-for _, row in df.iterrows():
-    x = int(round(row['x']))
-    y = int(round(row['y']))
+valid = (
+    (coords[x_col] >= 0) & (coords[x_col] < width) &
+    (coords[y_col] >= 0) & (coords[y_col] < height)
+)
 
-    # Vérification que la coordonnée est dans l'image
-    if 0 <= x < width and 0 <= y < height:
-        value = mask[y, x]  # attention ordre [row, col] = [y, x]
+coords = coords[valid]
 
-        if value == 0:
-            substrate_count += 1
-        elif value == 1:
-            tissue_count += 1
+values = mask[coords[y_col], coords[x_col]]
+
+substrate_count = np.sum(values == 0)
+tissue_count = np.sum(values == 1)
 
 # -------------------------
 # Résultats
 # -------------------------
 
 print("===== RESULTS =====")
-print(f"NPs on substrate : {substrate_count}")
-print(f"NPs on tissue    : {tissue_count}")
-print(f"Total counted    : {substrate_count + tissue_count}")
+print(f"Total NPs (valid) : {len(values)}")
+print(f"NPs on substrate  : {substrate_count}")
+print(f"NPs on tissue     : {tissue_count}")
